@@ -1,32 +1,105 @@
-
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import AccountMenu from "./components/AccountMenu";
+import AudioPlayer from "./components/AudioPlayer";
+import LibraryPanel from "./components/LibraryPanel";
 
-const songs = [
-  { title: "Midnight Dreams", artist: "The Weekenders", color: "from-purple-700 to-indigo-950", icon: "🌙" },
-  { title: "Golden Hour", artist: "Sunset Collective", color: "from-orange-500 to-rose-900", icon: "🌅" },
-  { title: "Ocean Waves", artist: "Blue Horizon", color: "from-cyan-600 to-blue-950", icon: "🌊" },
-  { title: "Electric Soul", artist: "Neon Avenue", color: "from-pink-600 to-purple-950", icon: "⚡" },
-  { title: "Calm Mornings", artist: "Acoustic Stories", color: "from-emerald-600 to-teal-950", icon: "🌿" },
-  { title: "City Lights", artist: "Urban Echo", color: "from-slate-500 to-slate-950", icon: "🌃" },
+type Track = {
+  id: string;
+  title: string;
+  durationMs: number;
+  artists: { id: string; name: string }[];
+  album?: { title: string } | null;
+  genres?: { name: string }[];
+};
+
+const visuals = [
+  { color: "from-purple-700 to-indigo-950", icon: "🌙" },
+  { color: "from-orange-500 to-rose-900", icon: "🌅" },
+  { color: "from-cyan-600 to-blue-950", icon: "🌊" },
+  { color: "from-emerald-600 to-teal-950", icon: "🌿" },
+  { color: "from-pink-600 to-purple-950", icon: "⚡" },
+  { color: "from-slate-500 to-slate-950", icon: "🌃" },
 ];
 
 export default function Home() {
-  const [activeSong, setActiveSong] = useState(songs[0]);
+  const [songs, setSongs] = useState<Track[]>([]);
+  const [activeSongId, setActiveSongId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const filteredSongs = songs.filter((song) =>
-    `${song.title} ${song.artist}`.toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadTracks() {
+      try {
+        const response = await fetch("/api/catalog/tracks", {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error("Unable to load music catalogue.");
+        }
+
+        const data: Track[] = await response.json();
+        setSongs(data);
+
+        if (data.length > 0) {
+          setActiveSongId(data[0].id);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name !== "AbortError") {
+          setError(err.message);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadTracks();
+
+    return () => controller.abort();
+  }, []);
+
+  const activeSong =
+    songs.find((song) => song.id === activeSongId) ?? songs[0] ?? null;
+
+  const filteredSongs = songs.filter((song) => {
+    const artistNames = song.artists.map((artist) => artist.name).join(" ");
+    return `${song.title} ${artistNames}`
+      .toLowerCase()
+      .includes(search.toLowerCase());
+  });
+
+  function playSong(song: Track) {
+    setActiveSongId(song.id);
+    setIsPlaying(true);
+  }
+
+  function changeTrack(direction: number) {
+    if (songs.length === 0 || !activeSong) return;
+
+    const currentIndex = songs.findIndex(
+      (song) => song.id === activeSong.id
+    );
+
+    const nextIndex =
+      (currentIndex + direction + songs.length) % songs.length;
+
+    setActiveSongId(songs[nextIndex].id);
+    setIsPlaying(true);
+  }
 
   return (
-    <main className="min-h-screen bg-[#080b0a] text-white pb-28">
+    <main className="min-h-screen bg-[#080b0a] pb-28 text-white">
       <div className="flex min-h-screen">
-
         {/* Sidebar */}
-        <aside className="hidden md:flex w-60 shrink-0 flex-col bg-black p-6">
+        <aside className="hidden w-60 shrink-0 flex-col bg-black p-6 md:flex">
           <h1 className="mb-10 text-2xl font-bold tracking-tight text-green-400">
             soundwave<span className="text-white">.</span>
           </h1>
@@ -58,15 +131,14 @@ export default function Home() {
 
         {/* Main dashboard */}
         <section className="min-w-0 flex-1 px-5 py-7 md:px-10">
-
           <header className="mb-10 flex items-center justify-between gap-4">
             <div>
               <p className="text-sm text-gray-400">Welcome back</p>
-              <h2 className="mt-1 text-3xl font-bold">Your music, your mood.</h2>
+              <h2 className="mt-1 text-3xl font-bold">
+                Your music, your mood.
+              </h2>
             </div>
-            <div className="hidden rounded-full bg-[#202723] px-5 py-3 text-sm text-gray-300 sm:block">
-              Sriram's Music Space
-            </div>
+            <AccountMenu />
           </header>
 
           {/* Featured banner */}
@@ -82,10 +154,10 @@ export default function Home() {
             </p>
             <button
               onClick={() => {
-                setActiveSong(songs[0]);
-                setIsPlaying(true);
+                if (songs.length > 0) playSong(songs[0]);
               }}
-              className="mt-7 rounded-full bg-green-400 px-7 py-3 font-bold text-black hover:bg-green-300"
+              disabled={songs.length === 0}
+              className="mt-7 rounded-full bg-green-400 px-7 py-3 font-bold text-black hover:bg-green-300 disabled:opacity-50"
             >
               ▶ Explore music
             </button>
@@ -111,63 +183,66 @@ export default function Home() {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-              {filteredSongs.map((song) => (
-                <button
-                  key={song.title}
-                  onClick={() => {
-                    setActiveSong(song);
-                    setIsPlaying(true);
-                  }}
-                  className="group rounded-xl bg-[#141a16] p-3 text-left transition hover:bg-[#222b25]"
-                >
-                  <div className={`mb-4 flex aspect-square items-center justify-center rounded-lg bg-gradient-to-br ${song.color}`}>
-                    <span className="text-5xl">{song.icon}</span>
-                  </div>
-                  <p className="truncate text-sm font-bold">{song.title}</p>
-                  <p className="mt-1 truncate text-xs text-gray-400">{song.artist}</p>
-                </button>
-              ))}
-            </div>
+            {loading && (
+              <p className="py-8 text-sm text-gray-400">
+                Loading your music catalogue...
+              </p>
+            )}
 
-            {filteredSongs.length === 0 && (
+            {error && (
+              <p className="py-8 text-sm text-red-400">
+                {error} Please refresh the page and try again.
+              </p>
+            )}
+
+            {!loading && !error && (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+                {filteredSongs.map((song, index) => {
+                  const visual = visuals[index % visuals.length];
+                  const artistNames = song.artists
+                    .map((artist) => artist.name)
+                    .join(", ");
+
+                  return (
+                    <button
+                      key={song.id}
+                      onClick={() => playSong(song)}
+                      className="group rounded-xl bg-[#141a16] p-3 text-left transition hover:bg-[#222b25]"
+                    >
+                      <div
+                        className={`mb-4 flex aspect-square items-center justify-center rounded-lg bg-gradient-to-br ${visual.color}`}
+                      >
+                        <span className="text-5xl">{visual.icon}</span>
+                      </div>
+                      <p className="truncate text-sm font-bold">
+                        {song.title}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-gray-400">
+                        {artistNames || "Unknown artist"}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {!loading && !error && filteredSongs.length === 0 && (
               <p className="py-8 text-sm text-gray-400">
                 No matching tracks found. Try another search.
               </p>
             )}
           </div>
-
+          <LibraryPanel tracks={songs} />
         </section>
       </div>
 
-      {/* Bottom music player */}
-      <footer className="fixed bottom-0 left-0 z-10 flex w-full items-center justify-between border-t border-gray-800 bg-[#111713] px-4 py-4 md:px-8">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-blue-900 text-2xl">
-            {activeSong.icon}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold">{activeSong.title}</p>
-            <p className="truncate text-xs text-gray-400">{activeSong.artist}</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-5">
-          <button className="text-gray-400 hover:text-white" aria-label="Previous">|◀</button>
-          <button
-            onClick={() => setIsPlaying(!isPlaying)}
-            aria-label={isPlaying ? "Pause" : "Play"}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-lg text-black hover:scale-105"
-          >
-            {isPlaying ? "Ⅱ" : "▶"}
-          </button>
-          <button className="text-gray-400 hover:text-white" aria-label="Next">▶|</button>
-        </div>
-
-        <div className="hidden text-xs text-gray-400 sm:block">
-          {isPlaying ? "Playing preview mode" : "Ready to play"}
-        </div>
-      </footer>
+      <AudioPlayer
+        track={activeSong}
+        isPlaying={isPlaying}
+        onTogglePlay={() => setIsPlaying((current) => !current)}
+        onPrevious={() => changeTrack(-1)}
+        onNext={() => changeTrack(1)}
+      />
     </main>
   );
 }
