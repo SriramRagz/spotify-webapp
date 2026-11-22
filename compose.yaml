@@ -8,8 +8,20 @@ services:
     container_name: spotify-webapp
     ports:
       - "3000:3000"
+    networks:
+      - default
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=n8n-apdl_default"
+      - "traefik.http.routers.spotify.rule=Host(`audioram.tech`) || Host(`www.audioram.tech`)"
+      - "traefik.http.routers.spotify.entrypoints=websecure"
+      - "traefik.http.routers.spotify.tls=true"
+      - "traefik.http.routers.spotify.tls.certresolver=letsencrypt"
+      - "traefik.http.services.spotify.loadbalancer.server.port=3000"
     environment:
       NODE_ENV: production
+      BACKEND_URL: http://spotify-backend:3001/api
     restart: unless-stopped
 
   # 2. NestJS Backend
@@ -42,6 +54,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=n8n-apdl_default"
+      - "traefik.http.routers.spotify-api.rule=(Host(`audioram.tech`) || Host(`www.audioram.tech`)) && PathPrefix(`/api/catalog`)"
+      - "traefik.http.routers.spotify-api.entrypoints=websecure"
+      - "traefik.http.routers.spotify-api.priority=100"
+      - "traefik.http.routers.spotify-api.tls=true"
+      - "traefik.http.routers.spotify-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.spotify-api.service=spotify-api"
+      - "traefik.http.services.spotify-api.loadbalancer.server.port=3001"
+    networks:
+      - default
+      - traefik-public
     restart: unless-stopped
 
   # 3. PostgreSQL Database
@@ -84,20 +109,13 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # 5. Nginx API Gateway
-  nginx:
-    image: nginx:alpine
-    container_name: spotify-nginx
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - spotify-webapp
-      - spotify-backend
-    restart: unless-stopped
 
 # Persistent database storage
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  traefik-public:
+    external: true
+    name: n8n-apdl_default

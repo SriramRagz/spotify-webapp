@@ -94,7 +94,7 @@ export default function AudioPlayer({
             <p className="truncate text-xs text-gray-400">
               {track?.artists.map((artist) => artist.name).join(", ") ?? "Your music player"}
             </p>
-            <p className="text-[10px] text-green-400">Original demo audio</p>
+            <p className="text-[10px] text-green-400">Shared demo audio • not the original recording</p>
           </div>
         </div>
 
